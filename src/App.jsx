@@ -11,8 +11,18 @@ export default function App() {
   const [aba, setAba] = useState('demandas')
   const [clientes, setClientes] = useState([])
   const [eventoPreAgendado, setEventoPreAgendado] = useState(null)
+  const [mensagemCompartilhada, setMensagemCompartilhada] = useState(null)
 
   useEffect(() => {
+    // Detecta mensagem compartilhada do WhatsApp via Share Target
+    const params = new URLSearchParams(window.location.search)
+    const share = params.get('share')
+    if (share) {
+      setMensagemCompartilhada(decodeURIComponent(share))
+      // Limpa a URL sem recarregar
+      window.history.replaceState({}, '', '/')
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setLoading(false)
@@ -53,7 +63,15 @@ export default function App() {
       </header>
 
       <main style={s.main}>
-        {aba === 'demandas' && <Demandas user={session.user} clientes={clientes} onAgendar={agendarDemanda} />}
+        {aba === 'demandas' && (
+          <Demandas
+            user={session.user}
+            clientes={clientes}
+            onAgendar={agendarDemanda}
+            mensagemCompartilhada={mensagemCompartilhada}
+            onMensagemConsumida={() => setMensagemCompartilhada(null)}
+          />
+        )}
         {aba === 'agenda'   && <Agenda   user={session.user} clientes={clientes} eventoPreAgendado={eventoPreAgendado} onEventoPreAgendadoConsumed={() => setEventoPreAgendado(null)} />}
         {aba === 'clientes' && <Clientes user={session.user} onClientesChange={setClientes} />}
       </main>

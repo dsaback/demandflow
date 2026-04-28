@@ -31,7 +31,7 @@ function clienteCor(nome, clientes) {
   return CORES[Math.abs((nome||'').split('').reduce((a,c)=>a+c.charCodeAt(0),0))%CORES.length]
 }
 
-export default function Agenda({ user, clientes }) {
+export default function Agenda({ user, clientes, eventoPreAgendado, onEventoPreAgendadoConsumed }) {
   const [eventos, setEventos] = useState([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('semana')
@@ -44,6 +44,25 @@ export default function Agenda({ user, clientes }) {
   const hoje = new Date()
 
   useEffect(()=>{ carregar() },[])
+
+  // Abre modal automaticamente quando vier da tela de Demandas
+  useEffect(()=>{
+    if (eventoPreAgendado) {
+      const base = new Date(); base.setHours(9,0,0,0)
+      setForm({
+        titulo: eventoPreAgendado.titulo || '',
+        cliente_nome: eventoPreAgendado.cliente_nome || clientes[0]?.nome || '',
+        data: base,
+        hora: '09:00',
+        duracao: eventoPreAgendado.duracao || 60,
+        urgencia: eventoPreAgendado.urgencia || 'media',
+        descricao: eventoPreAgendado.descricao || '',
+        status: 'pendente',
+      })
+      setModal(true)
+      onEventoPreAgendadoConsumed?.()
+    }
+  }, [eventoPreAgendado])
 
   async function carregar() {
     setLoading(true)

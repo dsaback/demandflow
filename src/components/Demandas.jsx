@@ -21,19 +21,40 @@ function timeAgo(ts) {
   return `${Math.floor(h/24)}d atrás`
 }
 
-async function analisarIA(demanda) {
+async function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result.split(',')[1])
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function analisarIA(demanda, imagens = []) {
+  const prompt = `Analise esta demanda e retorne APENAS JSON válido sem markdown:
+{"resumo":"resumo em 1 linha","urgencia":"critica|alta|media|baixa","tempoEstimado":número_horas,"tags":["tag1"],"solucoes":[{"titulo":"título","descricao":"descrição detalhada","prazo":"imediato|curto|médio"}]}
+Cliente: ${demanda.cliente_nome}
+Mensagem: ${demanda.mensagem}
+${imagens.length > 0 ? `\nImagens anexadas: ${imagens.length} imagem(ns). Analise também o conteúdo visual para identificar erros, problemas ou contexto adicional.` : ''}`
+
+  // Monta o conteúdo com imagens se houver
+  let content
+  if (imagens.length > 0) {
+    content = [
+      { type: 'text', text: prompt },
+      ...imagens.map(img => ({
+        type: 'image',
+        source: { type: 'base64', media_type: img.type, data: img.data }
+      }))
+    ]
+  } else {
+    content = prompt
+  }
+
   const res = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages: [{
-        role: 'user',
-        content: `Analise esta demanda e retorne APENAS JSON válido sem markdown:
-{"resumo":"resumo em 1 linha","urgencia":"critica|alta|media|baixa","tempoEstimado":número_horas,"tags":["tag1"],"solucoes":[{"titulo":"título","descricao":"descrição detalhada","prazo":"imediato|curto|médio"}]}
-Cliente: ${demanda.cliente_nome}
-Mensagem: ${demanda.mensagem}`
-      }]
-    })
+    body: JSON.stringify({ messages: [{ role: 'user', content }] })
   })
   const data = await res.json()
   const text = data.content?.map(i=>i.text||'').join('') || ''
@@ -46,6 +67,7 @@ export default function Demandas({ user, clientes }) {
   const [selecionada, setSelecionada] = useState(null)
   const [filtro, setFiltro] = useState('todas')
   const [nova, setNova] = useState(null)
+  const [imagens, setImagens] = useState([])
   const [analisando, setAnalisando] = useState(null)
   const [iaErro, setIaErro] = useState(null)
   const [salvando, setSalvando] = useState(false)
@@ -74,16 +96,18 @@ export default function Demandas({ user, clientes }) {
     }]).select().single()
     if (!error&&data) {
       setDemandas(prev=>[data,...prev])
+      const imgs = imagens
       setNova(null)
+      setImagens([])
       setSalvando(false)
-      handleAnalisar(data)
+      handleAnalisar(data, imgs)
     } else setSalvando(false)
   }
 
-  async function handleAnalisar(demanda) {
+  async function handleAnalisar(demanda, imgs = []) {
     setAnalisando(demanda.id); setIaErro(null)
     try {
-      const a = await analisarIA(demanda)
+      const a = await analisarIA(demanda, imgs)
       const up = { urgencia:a.urgencia||demanda.urgencia, tempo_estimado:a.tempoEstimado||demanda.tempo_estimado,
         tags:a.tags||[], resumo_ia:a.resumo||null, solucoes:a.solucoes||[] }
       await supabase.from('demandas').update(up).eq('id',demanda.id)
@@ -162,9 +186,20 @@ export default function Demandas({ user, clientes }) {
 
   // ── NOVA DEMANDA ───────────────────────────────────────────────
   if (nova !== null) {
+    async function handleImagens(e) {
+      const files = Array.from(e.target.files)
+      const converted = await Promise.all(files.map(async f => ({
+        name: f.name,
+        type: f.type,
+        url: URL.createObjectURL(f),
+        data: await toBase64(f)
+      })))
+      setImagens(prev => [...prev, ...converted].slice(0, 4))
+    }
+
     return (
       <div style={s.scroll} className="fade-in">
-        <button style={s.back} onClick={()=>setNova(null)}>← Cancelar</button>
+        <button style={s.back} onClick={()=>{setNova(null);setImagens([])}}>← Cancelar</button>
         <h2 style={s.titulo}>Nova Demanda</h2>
         <p style={{color:'#475569',fontSize:12,marginBottom:20}}>Cole a mensagem do WhatsApp — a IA classifica automaticamente.</p>
         <Fld label="Cliente">
@@ -181,8 +216,30 @@ export default function Demandas({ user, clientes }) {
             placeholder="Cole aqui a mensagem do WhatsApp..."
             value={nova.mensagem||''} onChange={e=>setNova(p=>({...p,mensagem:e.target.value}))}/>
         </Fld>
+
+        {/* Upload de imagens */}
+        <Fld label="Imagens / Prints de erro (opcional)">
+          <label style={s.uploadArea}>
+            <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleImagens}/>
+            <span style={s.uploadIcon}>📎</span>
+            <span style={s.uploadTxt}>Clique para anexar prints ou arraste aqui</span>
+            <span style={s.uploadSub}>até 4 imagens · JPG, PNG, WebP</span>
+          </label>
+          {imagens.length > 0 && (
+            <div style={s.imgGrid}>
+              {imagens.map((img, i) => (
+                <div key={i} style={s.imgThumb}>
+                  <img src={img.url} alt={img.name} style={s.imgPreview}/>
+                  <button style={s.imgRemove} onClick={()=>setImagens(prev=>prev.filter((_,j)=>j!==i))}>✕</button>
+                  <div style={s.imgName}>{img.name.slice(0,16)}...</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Fld>
+
         <button style={s.btnPri} onClick={handleSalvar} disabled={salvando}>
-          {salvando?'⏳ Salvando...':'✨ Adicionar e Analisar com IA'}
+          {salvando ? '⏳ Salvando...' : `✨ Adicionar e Analisar com IA${imagens.length > 0 ? ` (+${imagens.length} imagem)` : ''}`}
         </button>
       </div>
     )
@@ -305,4 +362,18 @@ const s = {
   // form
   inp:{width:'100%',background:'#0F172A',border:'1px solid #1E293B',color:'#E2E8F0',borderRadius:7,padding:'9px 12px',fontSize:13,outline:'none',fontFamily:'inherit'},
   btnPri:{width:'100%',background:'#1D4ED8',border:'none',color:'#fff',padding:'12px',borderRadius:8,fontSize:13,fontWeight:700},
+  // upload
+  uploadArea:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,
+    background:'#0F172A',border:'2px dashed #1E293B',borderRadius:8,padding:'20px',cursor:'pointer',
+    textAlign:'center',transition:'border-color 0.15s'},
+  uploadIcon:{fontSize:24},
+  uploadTxt:{fontSize:12,color:'#475569',fontWeight:600},
+  uploadSub:{fontSize:10,color:'#334155'},
+  imgGrid:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginTop:10},
+  imgThumb:{position:'relative',borderRadius:6,overflow:'hidden',border:'1px solid #1E293B',background:'#0F172A'},
+  imgPreview:{width:'100%',aspectRatio:'1',objectFit:'cover',display:'block'},
+  imgRemove:{position:'absolute',top:3,right:3,width:18,height:18,borderRadius:'50%',
+    background:'rgba(0,0,0,0.7)',border:'none',color:'#fff',fontSize:10,
+    display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',padding:0},
+  imgName:{fontSize:9,color:'#334155',padding:'3px 4px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},
 }

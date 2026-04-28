@@ -61,7 +61,7 @@ ${imagens.length > 0 ? `\nImagens anexadas: ${imagens.length} imagem(ns). Analis
   return JSON.parse(text.replace(/```json|```/g,'').trim())
 }
 
-export default function Demandas({ user, clientes, onAgendar }) {
+export default function Demandas({ user, clientes }) {
   const [demandas, setDemandas] = useState([])
   const [loading, setLoading] = useState(true)
   const [selecionada, setSelecionada] = useState(null)
@@ -71,9 +71,6 @@ export default function Demandas({ user, clientes, onAgendar }) {
   const [analisando, setAnalisando] = useState(null)
   const [iaErro, setIaErro] = useState(null)
   const [salvando, setSalvando] = useState(false)
-  const [historico, setHistorico] = useState([])
-  const [novaAnotacao, setNovaAnotacao] = useState('')
-  const [salvandoAnotacao, setSalvandoAnotacao] = useState(false)
 
   useEffect(() => { carregar() }, [])
 
@@ -82,26 +79,6 @@ export default function Demandas({ user, clientes, onAgendar }) {
     const { data } = await supabase.from('demandas').select('*').eq('user_id',user.id).order('criado_em',{ascending:false})
     setDemandas(data||[])
     setLoading(false)
-  }
-
-  async function carregarHistorico(demandaId) {
-    const { data } = await supabase.from('historico').select('*')
-      .eq('demanda_id', demandaId).order('criado_em', {ascending:false})
-    setHistorico(data||[])
-  }
-
-  async function salvarAnotacao(demandaId) {
-    if (!novaAnotacao.trim()) return
-    setSalvandoAnotacao(true)
-    const { data } = await supabase.from('historico').insert([{
-      user_id: user.id,
-      demanda_id: demandaId,
-      tipo: 'anotacao',
-      texto: novaAnotacao.trim(),
-    }]).select().single()
-    if (data) setHistorico(prev => [data, ...prev])
-    setNovaAnotacao('')
-    setSalvandoAnotacao(false)
   }
 
   const filtradas = demandas.filter(d => {
@@ -143,17 +120,8 @@ export default function Demandas({ user, clientes, onAgendar }) {
 
   async function handleStatus(id, status) {
     await supabase.from('demandas').update({status}).eq('id',id)
-    // Registra no histórico
-    const stLabels = { pendente:'Pendente', 'em-andamento':'Em Andamento', concluido:'Concluído' }
-    await supabase.from('historico').insert([{
-      user_id: user.id, demanda_id: id, tipo: 'status',
-      texto: `Status alterado para: ${stLabels[status]||status}`
-    }])
     setDemandas(prev=>prev.map(d=>d.id===id?{...d,status}:d))
-    if (selecionada?.id===id) {
-      setSelecionada(p=>({...p,status}))
-      carregarHistorico(id)
-    }
+    if (selecionada?.id===id) setSelecionada(p=>({...p,status}))
   }
 
   const prazoColor = { imediato:'#EF4444', curto:'#F59E0B', 'médio':'#10B981' }
@@ -162,21 +130,9 @@ export default function Demandas({ user, clientes, onAgendar }) {
   if (selecionada) {
     const d = demandas.find(x=>x.id===selecionada.id)||selecionada
     const urg = urgCfg[d.urgencia]
-
-    // Carrega histórico ao abrir
-    if (historico.length === 0 || historico[0]?.demanda_id !== d.id) {
-      carregarHistorico(d.id)
-    }
-
-    const tipoIcon = { anotacao:'📝', status:'🔄', solucao:'✅', outro:'💬' }
-    const fmtTs = ts => {
-      const dt = new Date(ts)
-      return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`
-    }
-
     return (
       <div style={s.scroll} className="fade-in">
-        <button style={s.back} onClick={()=>{setSelecionada(null);setHistorico([]);setNovaAnotacao('')}}>← Voltar</button>
+        <button style={s.back} onClick={()=>setSelecionada(null)}>← Voltar</button>
         <div style={s.detCliente}>{d.cliente_nome}</div>
         <div style={s.detMeta}>
           <span style={{...s.urgBadge,background:urg.bg,color:urg.color}}>{urg.label}</span>
@@ -191,9 +147,6 @@ export default function Demandas({ user, clientes, onAgendar }) {
               {v.label}
             </button>
           ))}
-          <button onClick={()=>onAgendar?.(d)} style={s.agendarBtn}>
-            📅 Agendar
-          </button>
         </div>
         <div style={s.msgBox}>
           <div style={s.msgLbl}>💬 MENSAGEM</div>
@@ -206,48 +159,6 @@ export default function Demandas({ user, clientes, onAgendar }) {
           </div>
         )}
         {d.tags?.length>0 && <div style={s.tags}>{d.tags.map(t=><span key={t} style={s.tag}>{t}</span>)}</div>}
-
-        {/* ── HISTÓRICO ── */}
-        <div style={s.histSection}>
-          <div style={s.histHeader}>
-            <span style={s.histTitle}>📋 Histórico & Anotações</span>
-          </div>
-          {/* Nova anotação */}
-          <div style={s.anotacaoBox}>
-            <textarea
-              style={s.anotacaoInput}
-              placeholder="Registre o que foi feito, próximos passos, observações..."
-              value={novaAnotacao}
-              onChange={e=>setNovaAnotacao(e.target.value)}
-              rows={3}
-            />
-            <button
-              style={s.anotacaoBtn}
-              onClick={()=>salvarAnotacao(d.id)}
-              disabled={salvandoAnotacao||!novaAnotacao.trim()}>
-              {salvandoAnotacao ? '⏳' : '+ Registrar'}
-            </button>
-          </div>
-          {/* Lista de registros */}
-          <div style={s.histLista}>
-            {historico.length === 0 && (
-              <p style={{color:'#334155',fontSize:12,textAlign:'center',padding:'16px 0'}}>Nenhum registro ainda.</p>
-            )}
-            {historico.map(h=>(
-              <div key={h.id} style={{...s.histItem, borderLeftColor: h.tipo==='status'?'#3B82F6':h.tipo==='solucao'?'#10B981':'#334155'}}>
-                <div style={s.histItemHead}>
-                  <span style={s.histItemIcon}>{tipoIcon[h.tipo]||'💬'}</span>
-                  <span style={s.histItemTs}>{fmtTs(h.criado_em)}</span>
-                  <span style={{...s.histItemTipo, color: h.tipo==='status'?'#3B82F6':h.tipo==='solucao'?'#10B981':'#64748B'}}>
-                    {h.tipo}
-                  </span>
-                </div>
-                <p style={s.histItemTxt}>{h.texto}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div style={s.iaSection}>
           <div style={s.iaSectionHead}>
             <span style={s.iaSectionTitle}>✨ Soluções sugeridas</span>
@@ -432,21 +343,6 @@ const s = {
   meta:{fontSize:11,color:'#334155'},
   statusRow:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:16},
   stBtn:{background:'#0F172A',border:'1px solid #1E293B',color:'#475569',padding:'5px 10px',borderRadius:6,fontSize:11,fontFamily:'inherit'},
-  agendarBtn:{background:'#0F172A',border:'1px solid #3B82F6',color:'#3B82F6',padding:'5px 12px',borderRadius:6,fontSize:11,fontFamily:'inherit',fontWeight:700},
-  // histórico
-  histSection:{background:'#0F172A',border:'1px solid #1E293B',borderRadius:10,padding:'16px',marginTop:16,marginBottom:4},
-  histHeader:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12},
-  histTitle:{fontSize:13,fontWeight:700,color:'#F1F5F9'},
-  anotacaoBox:{display:'flex',flexDirection:'column',gap:8,marginBottom:14},
-  anotacaoInput:{width:'100%',background:'#080C14',border:'1px solid #1E293B',color:'#E2E8F0',borderRadius:7,padding:'8px 12px',fontSize:12,outline:'none',fontFamily:'inherit',resize:'vertical'},
-  anotacaoBtn:{background:'#1D4ED8',border:'none',color:'#fff',padding:'8px 14px',borderRadius:7,fontSize:12,fontWeight:700,alignSelf:'flex-end'},
-  histLista:{display:'flex',flexDirection:'column',gap:8},
-  histItem:{background:'#080C14',borderLeft:'3px solid #334155',borderRadius:'0 6px 6px 0',padding:'10px 12px'},
-  histItemHead:{display:'flex',alignItems:'center',gap:8,marginBottom:5},
-  histItemIcon:{fontSize:13},
-  histItemTs:{fontSize:10,color:'#334155',flex:1},
-  histItemTipo:{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:1},
-  histItemTxt:{fontSize:12,color:'#94A3B8',lineHeight:1.6,margin:0},
   msgBox:{background:'#0F172A',border:'1px solid #1E293B',borderRadius:8,padding:'14px',marginBottom:12},
   msgLbl:{fontSize:9,color:'#334155',letterSpacing:1.5,textTransform:'uppercase',marginBottom:6},
   msgTxt:{fontSize:13,color:'#94A3B8',lineHeight:1.6},

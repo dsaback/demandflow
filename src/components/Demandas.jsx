@@ -22,22 +22,21 @@ function timeAgo(ts) {
 }
 
 async function analisarIA(demanda) {
-  const key = import.meta.env.VITE_ANTHROPIC_KEY
-  if (!key) throw new Error('VITE_ANTHROPIC_KEY não configurada')
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+  const res = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model:'claude-haiku-4-5-20251001',
-      max_tokens:800,
-      messages:[{role:'user',content:`Analise esta demanda e retorne APENAS JSON válido sem markdown:
+      messages: [{
+        role: 'user',
+        content: `Analise esta demanda e retorne APENAS JSON válido sem markdown:
 {"resumo":"resumo em 1 linha","urgencia":"critica|alta|media|baixa","tempoEstimado":número_horas,"tags":["tag1"],"solucoes":[{"titulo":"título","descricao":"descrição detalhada","prazo":"imediato|curto|médio"}]}
 Cliente: ${demanda.cliente_nome}
-Mensagem: ${demanda.mensagem}`}]
+Mensagem: ${demanda.mensagem}`
+      }]
     })
   })
   const data = await res.json()
-  const text = data.content?.map(i=>i.text||'').join('')||''
+  const text = data.content?.map(i=>i.text||'').join('') || ''
   return JSON.parse(text.replace(/```json|```/g,'').trim())
 }
 

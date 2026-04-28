@@ -83,7 +83,7 @@ ${imagens.length > 0 ? `\nImagens anexadas: ${imagens.length}. Analise os prints
   return JSON.parse(text.replace(/```json|```/g,'').trim())
 }
 
-export default function Demandas({ user, clientes, onAgendar }) {
+export default function Demandas({ user, clientes, onAgendar, mensagemCompartilhada, onMensagemConsumida }) {
   const [demandas, setDemandas] = useState([])
   const [loading, setLoading] = useState(true)
   const [selecionada, setSelecionada] = useState(null)
@@ -99,6 +99,14 @@ export default function Demandas({ user, clientes, onAgendar }) {
   const [imgAnotacao, setImgAnotacao] = useState([])
 
   useEffect(() => { carregar() }, [])
+
+  // Abre nova demanda automaticamente quando vier do WhatsApp
+  useEffect(() => {
+    if (mensagemCompartilhada) {
+      setNova({ mensagem: mensagemCompartilhada, cliente_nome: '' })
+      onMensagemConsumida?.()
+    }
+  }, [mensagemCompartilhada])
 
   async function carregar() {
     setLoading(true)

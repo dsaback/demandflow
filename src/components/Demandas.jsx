@@ -61,7 +61,7 @@ ${imagens.length > 0 ? `\nImagens anexadas: ${imagens.length} imagem(ns). Analis
   return JSON.parse(text.replace(/```json|```/g,'').trim())
 }
 
-export default function Demandas({ user, clientes }) {
+export default function Demandas({ user, clientes, onAgendar }) {
   const [demandas, setDemandas] = useState([])
   const [loading, setLoading] = useState(true)
   const [selecionada, setSelecionada] = useState(null)
@@ -147,6 +147,9 @@ export default function Demandas({ user, clientes }) {
               {v.label}
             </button>
           ))}
+          <button onClick={()=>onAgendar?.(d)} style={s.agendarBtn}>
+            📅 Agendar
+          </button>
         </div>
         <div style={s.msgBox}>
           <div style={s.msgLbl}>💬 MENSAGEM</div>
@@ -343,6 +346,7 @@ const s = {
   meta:{fontSize:11,color:'#334155'},
   statusRow:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:16},
   stBtn:{background:'#0F172A',border:'1px solid #1E293B',color:'#475569',padding:'5px 10px',borderRadius:6,fontSize:11,fontFamily:'inherit'},
+  agendarBtn:{background:'#0F172A',border:'1px solid #3B82F6',color:'#3B82F6',padding:'5px 12px',borderRadius:6,fontSize:11,fontFamily:'inherit',fontWeight:700},
   msgBox:{background:'#0F172A',border:'1px solid #1E293B',borderRadius:8,padding:'14px',marginBottom:12},
   msgLbl:{fontSize:9,color:'#334155',letterSpacing:1.5,textTransform:'uppercase',marginBottom:6},
   msgTxt:{fontSize:13,color:'#94A3B8',lineHeight:1.6},

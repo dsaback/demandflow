@@ -10,6 +10,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [aba, setAba] = useState('demandas')
   const [clientes, setClientes] = useState([])
+  const [eventoPreAgendado, setEventoPreAgendado] = useState(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -27,6 +28,17 @@ export default function App() {
 
   const nome = session.user.user_metadata?.nome || session.user.email?.split('@')[0] || 'Consultor'
 
+  function agendarDemanda(demanda) {
+    setEventoPreAgendado({
+      titulo: demanda.cliente_nome + ' — ' + (demanda.resumo_ia || demanda.mensagem.slice(0, 40)),
+      cliente_nome: demanda.cliente_nome,
+      descricao: demanda.mensagem,
+      urgencia: demanda.urgencia,
+      duracao: (demanda.tempo_estimado || 1) * 60,
+    })
+    setAba('agenda')
+  }
+
   return (
     <div style={s.root}>
       <header style={s.header}>
@@ -41,8 +53,8 @@ export default function App() {
       </header>
 
       <main style={s.main}>
-        {aba === 'demandas' && <Demandas user={session.user} clientes={clientes} />}
-        {aba === 'agenda'   && <Agenda   user={session.user} clientes={clientes} />}
+        {aba === 'demandas' && <Demandas user={session.user} clientes={clientes} onAgendar={agendarDemanda} />}
+        {aba === 'agenda'   && <Agenda   user={session.user} clientes={clientes} eventoPreAgendado={eventoPreAgendado} onEventoPreAgendadoConsumed={() => setEventoPreAgendado(null)} />}
         {aba === 'clientes' && <Clientes user={session.user} onClientesChange={setClientes} />}
       </main>
 
